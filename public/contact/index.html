@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>問い合わせ・掲載相談 | Tekipa</title>
+    <meta name="description" content="Tekipaへの問い合わせフォーム。不具合報告、取材、対応大学追加、掲載条件に満たない団体や立ち上げ直後のサークルの相談を送れます。">
+    <meta name="theme-color" content="#fffaf7">
+    <link rel="canonical" href="https://tekipa.net/contact/">
+    <meta property="og:type" content="website">
+    <meta property="og:site_name" content="Tekipa">
+    <meta property="og:locale" content="ja_JP">
+    <meta property="og:title" content="問い合わせ・掲載相談 | Tekipa">
+    <meta property="og:description" content="不具合報告、取材、対応大学追加、団体・サークル掲載相談をフォームから送れます。">
+    <meta property="og:url" content="https://tekipa.net/contact/">
+    <meta property="og:image" content="https://tekipa.net/logo.png?v=20260519a">
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="問い合わせ・掲載相談 | Tekipa">
+    <meta name="twitter:description" content="不具合報告、取材、対応大学追加、団体・サークル掲載相談をフォームから送れます。">
+    <meta name="twitter:image" content="https://tekipa.net/logo.png?v=20260519a">
+    <link rel="icon" href="/icon.png?v=20260519a">
+    <link rel="stylesheet" href="/styles.css?v=20260520a">
+    <script type="application/ld+json">
+      {
+        "@context": "https://schema.org",
+        "@type": "ContactPage",
+        "name": "問い合わせ・掲載相談 | Tekipa",
+        "url": "https://tekipa.net/contact/",
+        "inLanguage": "ja",
+        "about": {
+          "@type": "SoftwareApplication",
+          "name": "Tekipa",
+          "url": "https://tekipa.net/"
+        }
+      }
+    </script>
+  </head>
+  <body>
+    <header class="site-header">
+      <nav class="nav">
+        <a class="brand" href="/"><img class="brand-mark" src="/brand-mark.png" alt=""><span>Tekipa</span></a>
+        <div class="nav-links">
+          <a href="/#features">機能</a>
+          <a href="/universities/">対応大学</a>
+          <a href="/help/">ヘルプ</a>
+          <a href="/contact/" aria-current="page">問い合わせ</a>
+        </div>
+        <a class="nav-cta" href="#contact-form">フォームへ</a>
+      </nav>
+    </header>
+    <main>
+      <section class="page-hero">
+        <div class="eyebrow"><span class="status-dot"></span>CONTACT</div>
+        <h1>問い合わせ</h1>
+        <p class="lead">不具合、取材、大学追加、掲載条件に満たない団体や立ち上げ直後の団体の相談をフォームから送れます。</p>
+      </section>
+      <section class="page-content">
+        <form id="contact-form" class="contact-form">
+          <label class="field">
+            <span>問い合わせ種別</span>
+            <select name="category" required>
+              <option value="general">一般問い合わせ</option>
+              <option value="pr">団体・サークル掲載相談</option>
+              <option value="bug">不具合報告</option>
+              <option value="university">対応大学・連携相談</option>
+              <option value="press">取材・その他</option>
+            </select>
+          </label>
+          <div class="form-grid">
+            <label class="field">
+              <span>名前</span>
+              <input name="name" autocomplete="name" required>
+            </label>
+            <label class="field">
+              <span>メールアドレス</span>
+              <input name="email" type="email" autocomplete="email" required>
+            </label>
+          </div>
+          <div class="form-grid">
+            <label class="field">
+              <span>団体名・会社名（任意）</span>
+              <input name="organization" autocomplete="organization">
+            </label>
+            <label class="field">
+              <span>大学名（任意）</span>
+              <input name="university">
+            </label>
+          </div>
+          <label class="field">
+            <span>内容</span>
+            <textarea name="message" rows="8" required placeholder="相談内容、掲載希望時期、不具合の状況などを書いてください。"></textarea>
+          </label>
+          <label class="bot-field" aria-hidden="true">
+            <span>Web site</span>
+            <input name="website" tabindex="-1" autocomplete="off">
+          </label>
+          <div class="form-footer">
+            <p>送信内容は運営確認用に保存されます。団体掲載の相談には内容を確認したうえで返信します。</p>
+            <button class="button" type="submit">送信する</button>
+          </div>
+          <p id="form-status" class="form-status" role="status" aria-live="polite"></p>
+        </form>
+        <p class="service-note">
+          電話番号は特定商取引法に基づく表記に掲載していますが、問い合わせ対応は原則フォームで行います。
+        </p>
+      </section>
+    </main>
+    <footer class="footer">
+      <div>© Tekipa</div>
+      <div class="footer-links">
+        <a href="/help/">ヘルプ</a>
+        <a href="/contact/">問い合わせ</a>
+        <a href="/universities/">対応大学</a>
+        <a href="/legal/">法務情報</a>
+      </div>
+    </footer>
+    <script src="/contact.js?v=20260516a" defer></script>
+  </body>
+</html>

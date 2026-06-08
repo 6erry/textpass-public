@@ -1,0 +1,656 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function userDoc(uid) {
+      return get(/databases/$(database)/documents/users/$(uid));
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        userDoc(request.auth.uid).data.isAdmin == true;
+    }
+
+    function isVerifiedStudent() {
+      return isAuthenticated() &&
+        userDoc(request.auth.uid).data.isStudentVerified == true;
+    }
+
+    function circleRole(circleId) {
+      return get(/databases/$(database)/documents/circles/$(circleId)).data.member_roles[request.auth.uid];
+    }
+
+    function isCircleAdmin(circleId) {
+      return isAuthenticated() &&
+        (
+          request.auth.uid in get(/databases/$(database)/documents/circles/$(circleId)).data.admin_uids ||
+          circleRole(circleId) in ['owner', 'admin']
+        );
+    }
+
+    function isBookCommentIncrement() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['commentCount']) &&
+        request.resource.data.commentCount == resource.data.commentCount + 1;
+    }
+
+    function isAllowedListingType(listingType) {
+      return listingType in ['book', 'academic_supply', 'campus_life_beta'];
+    }
+
+    function isAllowedBookCategory(category) {
+      return category in [
+        '教科書',
+        '参考書',
+        '問題集',
+        '専門書',
+        '資格・検定本',
+        '語学教材',
+        'その他教材',
+      ];
+    }
+
+    function isAllowedAcademicSupplyCategory(category) {
+      return category in [
+        '関数電卓',
+        '白衣',
+        '実験用品',
+        '製図用品',
+        '語学辞書',
+        '実習・演習用品',
+        '授業で使う道具',
+        'その他授業用品',
+      ];
+    }
+
+    function isAllowedListingCategory(listingType, category) {
+      return (
+          listingType == 'book' &&
+          isAllowedBookCategory(category)
+        ) ||
+        (
+          listingType == 'academic_supply' &&
+          isAllowedAcademicSupplyCategory(category)
+        );
+    }
+
+    function isValidListingFee(listingType, feeRate, buyerFee) {
+      return buyerFee == 100 &&
+        (
+          (listingType == 'book' && feeRate == 0.05) ||
+          (listingType == 'academic_supply' && feeRate == 0.08)
+        );
+    }
+
+    function isValidBookCondition(condition) {
+      return condition in ['new', 'like_new', 'good', 'fair', 'poor'];
+    }
+
+    function isValidPurchaseMode(purchaseMode) {
+      return purchaseMode in ['instant', 'approval_required'];
+    }
+
+    function isValidBookCreate() {
+      return isAuthenticated() &&
+        request.resource.data.userId == request.auth.uid &&
+        request.resource.data.status == 'available' &&
+        isAllowedListingType(request.resource.data.listingType) &&
+        request.resource.data.listingType != 'campus_life_beta' &&
+        isAllowedListingCategory(
+          request.resource.data.listingType,
+          request.resource.data.category
+        ) &&
+        isValidBookCondition(request.resource.data.condition) &&
+        isValidListingFee(
+          request.resource.data.listingType,
+          request.resource.data.feeRate,
+          request.resource.data.buyerFee
+        ) &&
+        isValidPurchaseMode(request.resource.data.purchaseMode) &&
+        request.resource.data.prohibitedCheckConfirmed == true &&
+        request.resource.data.ownershipCheckConfirmed == true &&
+        request.resource.data.moderationStatus == 'active' &&
+        !request.resource.data.keys().hasAny([
+          'moderationReason',
+          'moderatedAt',
+          'moderatedBy',
+          'buyerUid',
+          'soldAt',
+        ]);
+    }
+
+    function hasActivePurchaseHold(bookId) {
+      return exists(/databases/$(database)/documents/purchase_holds/$(bookId)) &&
+        get(/databases/$(database)/documents/purchase_holds/$(bookId))
+          .data.expiresAt is timestamp &&
+        get(/databases/$(database)/documents/purchase_holds/$(bookId))
+          .data.expiresAt > request.time;
+    }
+
+    function isSafeBookOwnerUpdate(bookId) {
+      return isAuthenticated() &&
+        resource.data.userId == request.auth.uid &&
+        !hasActivePurchaseHold(bookId) &&
+        isAllowedListingType(request.resource.data.listingType) &&
+        request.resource.data.listingType != 'campus_life_beta' &&
+        isAllowedListingCategory(
+          request.resource.data.listingType,
+          request.resource.data.category
+        ) &&
+        isValidBookCondition(request.resource.data.condition) &&
+        isValidListingFee(
+          request.resource.data.listingType,
+          request.resource.data.feeRate,
+          request.resource.data.buyerFee
+        ) &&
+        isValidPurchaseMode(request.resource.data.purchaseMode) &&
+        request.resource.data.prohibitedCheckConfirmed == true &&
+        request.resource.data.ownershipCheckConfirmed == true &&
+        !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+          'userId',
+          'status',
+          'buyerUid',
+          'soldAt',
+          'moderationStatus',
+          'moderationReason',
+          'moderatedAt',
+          'moderatedBy',
+        ]);
+    }
+
+    function promotionFieldKeys() {
+      return [
+        'isPromoted',
+        'isPr',
+        'promotionTier',
+        'promotionStatus',
+        'promotionStartAt',
+        'promotionEndAt',
+        'promotionLabel',
+        'promotionAdminMemo',
+        'promotionExternalRef',
+        'promotionCreatedAt',
+        'promotionCreatedBy',
+        'promotionUpdatedAt',
+        'promotionUpdatedBy',
+      ];
+    }
+
+    function isOneStepEventLikeUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['like_count']) &&
+        request.resource.data.like_count >= 0 &&
+        (
+          request.resource.data.like_count == resource.data.like_count + 1 ||
+          request.resource.data.like_count == resource.data.like_count - 1
+        );
+    }
+
+    function isCurrentChatParticipant() {
+      return isAuthenticated() &&
+        (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid
+        );
+    }
+
+    function isMessageNotificationTarget(userId) {
+      return request.resource.data.type == 'message' &&
+        request.resource.data.fromUid == request.auth.uid &&
+        request.resource.data.isRead == false &&
+        exists(/databases/$(database)/documents/chat_rooms/$(request.resource.data.relatedId)) &&
+        get(/databases/$(database)/documents/chat_rooms/$(request.resource.data.relatedId))
+          .data.participants.hasAll([request.auth.uid, userId]);
+    }
+
+    function isPurchaseRequestNotificationTarget(userId) {
+      return request.resource.data.type == 'purchase_request' &&
+        request.resource.data.fromUid == request.auth.uid &&
+        request.resource.data.isRead == false &&
+        exists(/databases/$(database)/documents/books/$(request.resource.data.relatedId)) &&
+        get(/databases/$(database)/documents/books/$(request.resource.data.relatedId))
+          .data.userId == userId;
+    }
+
+    function isMeetingProposalUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['meetingPlace', 'meetingTime', 'meetingStatus', 'proposerId']) &&
+        request.resource.data.meetingStatus == 'pending' &&
+        request.resource.data.proposerId == request.auth.uid &&
+        !(resource.data.status in ['completed', 'cancelled']);
+    }
+
+    function isMeetingResponseUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['meetingStatus', 'meetingPlace', 'meetingTime', 'proposerId']) &&
+        resource.data.meetingStatus == 'pending' &&
+        request.resource.data.meetingStatus in ['agreed', 'rejected'] &&
+        (
+          (
+            request.resource.data.meetingStatus == 'agreed' &&
+            resource.data.proposerId != request.auth.uid
+          ) ||
+          !request.resource.data.keys().hasAny(['meetingPlace', 'meetingTime', 'proposerId'])
+        );
+    }
+
+    function isCancellationRequestUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'cancellationStatus',
+            'cancellationRequesterId',
+            'cancellationReason',
+            'cancellationDescription',
+            'cancellationRequestedAt',
+          ]) &&
+        request.resource.data.cancellationStatus == 'requesting' &&
+        request.resource.data.cancellationRequesterId == request.auth.uid &&
+        !(resource.data.status in ['completed', 'cancelled']);
+    }
+
+    function isCancellationRejectUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly([
+            'cancellationStatus',
+            'cancellationRequesterId',
+            'cancellationReason',
+            'cancellationDescription',
+            'cancellationRequestedAt',
+          ]) &&
+        resource.data.cancellationStatus == 'requesting' &&
+        resource.data.cancellationRequesterId != request.auth.uid &&
+        !request.resource.data.keys().hasAny([
+          'cancellationStatus',
+          'cancellationRequesterId',
+          'cancellationReason',
+          'cancellationDescription',
+          'cancellationRequestedAt',
+        ]);
+    }
+
+    function isTransactionCompletionUpdate() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['status', 'completedAt', 'pendingReviews', 'bookExists']) &&
+        resource.data.status == 'paid' &&
+        resource.data.meetingStatus == 'agreed' &&
+        request.auth.uid == resource.data.sellerId &&
+        request.resource.data.status == 'completed' &&
+        request.resource.data.bookExists == true &&
+        request.resource.data.pendingReviews.hasAll([
+          resource.data.buyerId,
+          resource.data.sellerId,
+        ]);
+    }
+
+    function isPendingReviewRemoval() {
+      return request.resource.data.diff(resource.data).affectedKeys()
+          .hasOnly(['pendingReviews']) &&
+        resource.data.pendingReviews.hasAny([request.auth.uid]) &&
+        !request.resource.data.pendingReviews.hasAny([request.auth.uid]) &&
+        request.resource.data.pendingReviews.size() == resource.data.pendingReviews.size() - 1;
+    }
+
+    function isHandoverStatusUpdate() {
+      return (
+          request.auth.uid == resource.data.buyerId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['buyerHandoverStatus', 'buyerHandoverStatusUpdatedAt']) &&
+          request.resource.data.buyerHandoverStatus in [
+            'on_my_way',
+            'arrived',
+            'waiting',
+            'late_5',
+            'late_10',
+            'need_reschedule',
+            'completed_handover',
+          ]
+        ) ||
+        (
+          request.auth.uid == resource.data.sellerId &&
+          request.resource.data.diff(resource.data).affectedKeys()
+            .hasOnly(['sellerHandoverStatus', 'sellerHandoverStatusUpdatedAt']) &&
+          request.resource.data.sellerHandoverStatus in [
+            'on_my_way',
+            'arrived',
+            'waiting',
+            'late_5',
+            'late_10',
+            'need_reschedule',
+            'completed_handover',
+          ]
+        );
+    }
+
+    function isValidTransactionReview() {
+      return isVerifiedStudent() &&
+        request.resource.data.reviewerId == request.auth.uid &&
+        exists(/databases/$(database)/documents/chat_rooms/$(request.resource.data.transactionId)) &&
+        get(/databases/$(database)/documents/chat_rooms/$(request.resource.data.transactionId))
+          .data.pendingReviews.hasAny([request.auth.uid]) &&
+        (
+          request.resource.data.revieweeId ==
+            get(/databases/$(database)/documents/chat_rooms/$(request.resource.data.transactionId)).data.buyerId ||
+          request.resource.data.revieweeId ==
+            get(/databases/$(database)/documents/chat_rooms/$(request.resource.data.transactionId)).data.sellerId
+        ) &&
+        request.resource.data.revieweeId != request.auth.uid;
+    }
+
+    function isValidNewReport() {
+      return isAuthenticated() &&
+        (
+          request.resource.data.reporterUserId == request.auth.uid ||
+          request.resource.data.reporterId == request.auth.uid
+        ) &&
+        request.resource.data.status == 'open' &&
+        (
+          request.resource.data.type in ['item', 'user', 'transaction', 'listing', 'event', 'circle', 'chat'] ||
+          request.resource.data.targetType in ['book', 'user', 'event', 'circle', 'chat', 'transaction']
+        ) &&
+        request.resource.data.createdAt == request.time;
+    }
+
+    match /users/{userId} {
+      allow read: if isAuthenticated();
+      allow create: if isOwner(userId) &&
+        !request.resource.data.keys().hasAny([
+          'isAdmin',
+          'isBanned',
+          'verificationStatus',
+          'isFreshmanProvisional',
+          'provisionalAccessGrantedAt',
+          'provisionalExpiresAt',
+          'freshmanProvisionalConvertedAt',
+          'stripeAccountId',
+          'stripeConnectedAccountId',
+        ]) &&
+        (
+          !request.resource.data.keys().hasAny(['isStudentVerified']) ||
+          request.resource.data.isStudentVerified == false
+        );
+      allow update: if (
+          isOwner(userId) &&
+          !request.resource.data.diff(resource.data).affectedKeys().hasAny([
+            'isAdmin',
+            'isBanned',
+            'isStudentVerified',
+            'verificationStatus',
+            'isFreshmanProvisional',
+            'provisionalAccessGrantedAt',
+            'provisionalExpiresAt',
+            'freshmanProvisionalConvertedAt',
+            'stripeAccountId',
+            'stripeConnectedAccountId',
+          ]) &&
+          (
+            !request.resource.data.diff(resource.data).affectedKeys()
+              .hasAny(['isContactEmailVerified']) ||
+            request.resource.data.isContactEmailVerified == false
+          )
+        ) || isAdmin();
+      allow delete: if isOwner(userId) || isAdmin();
+
+      match /timetable/{classId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+
+        match /reminders/{reminderId} {
+          allow read, write: if isOwner(userId) || isAdmin();
+        }
+      }
+
+      match /custom_syllabus/{syllabusId} {
+        allow read, write: if isOwner(userId) || isAdmin();
+      }
+
+      match /notifications/{notificationId} {
+        allow read, update, delete: if isOwner(userId) || isAdmin();
+        allow create: if isAuthenticated() &&
+          (
+            isMessageNotificationTarget(userId) ||
+            isPurchaseRequestNotificationTarget(userId)
+          );
+      }
+
+      match /private_data/{docId} {
+        allow read, write: if false;
+      }
+    }
+
+    match /app_config/{configId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /books/{bookId} {
+      allow read: if isAuthenticated();
+      allow create: if isValidBookCreate();
+      allow update: if isAuthenticated() && (
+        isSafeBookOwnerUpdate(bookId) ||
+        isAdmin() ||
+        isBookCommentIncrement()
+      );
+      allow delete: if isAuthenticated() &&
+        (resource.data.userId == request.auth.uid || isAdmin());
+
+      match /comments/{commentId} {
+        allow read: if isAuthenticated();
+        allow create: if isAuthenticated() &&
+          request.resource.data.userId == request.auth.uid;
+        allow update, delete: if isAuthenticated() &&
+          (resource.data.userId == request.auth.uid || isAdmin());
+      }
+    }
+
+    match /purchase_holds/{holdId} {
+      allow read, write: if false;
+    }
+
+    match /bundle_requests/{bundleRequestId} {
+      allow read: if isAuthenticated() &&
+        (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid ||
+          isAdmin()
+        );
+      allow create, update, delete: if false;
+    }
+
+    match /purchase_requests/{requestId} {
+      allow read: if isAuthenticated() &&
+        (
+          resource.data.buyerId == request.auth.uid ||
+          resource.data.sellerId == request.auth.uid ||
+          isAdmin()
+        );
+      allow create: if isAuthenticated() &&
+        request.resource.data.buyerId == request.auth.uid &&
+        request.resource.data.sellerId is string &&
+        request.resource.data.bookId is string &&
+        request.resource.data.universityId is string &&
+        request.resource.data.status == 'pending' &&
+        request.resource.data.expiresAt is timestamp &&
+        request.resource.data.createdAt == request.time &&
+        request.resource.data.updatedAt == request.time;
+      allow update: if isAuthenticated() &&
+        (
+          (
+            resource.data.sellerId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'updatedAt']) &&
+            request.resource.data.status in ['approved', 'rejected'] &&
+            request.resource.data.updatedAt == request.time
+          ) ||
+          (
+            resource.data.buyerId == request.auth.uid &&
+            request.resource.data.diff(resource.data).affectedKeys()
+              .hasOnly(['status', 'updatedAt']) &&
+            request.resource.data.status == 'cancelled' &&
+            request.resource.data.updatedAt == request.time
+          ) ||
+          isAdmin()
+        );
+      allow delete: if isAdmin();
+    }
+
+    match /events/{eventId} {
+      allow read: if isAuthenticated();
+      allow create: if false;
+      allow update: if isAuthenticated() && (
+        isAdmin() ||
+        isOneStepEventLikeUpdate()
+      );
+      allow delete: if isAdmin();
+    }
+
+    match /circles/{circleId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() &&
+        request.auth.uid in request.resource.data.member_uids &&
+        request.auth.uid in request.resource.data.admin_uids &&
+        request.resource.data.member_roles[request.auth.uid] == 'owner' &&
+        !request.resource.data.keys().hasAny(promotionFieldKeys());
+      allow update: if isAdmin();
+      allow delete: if isAdmin();
+
+      match /audit_logs/{logId} {
+        allow read: if isCircleAdmin(circleId) || isAdmin();
+        allow create: if isAuthenticated() &&
+          request.resource.data.actor_uid == request.auth.uid &&
+          request.resource.data.action == 'circle_created' &&
+          existsAfter(/databases/$(database)/documents/circles/$(circleId)) &&
+          getAfter(/databases/$(database)/documents/circles/$(circleId))
+            .data.member_roles[request.auth.uid] == 'owner';
+        allow update, delete: if false;
+      }
+    }
+
+    match /chat_rooms/{chatId} {
+      allow create: if false;
+      allow read: if isCurrentChatParticipant() || isAdmin();
+      allow update: if isAdmin() || (
+        isCurrentChatParticipant() &&
+        (
+          isMeetingProposalUpdate() ||
+          isMeetingResponseUpdate() ||
+          isHandoverStatusUpdate() ||
+          isCancellationRequestUpdate() ||
+          isCancellationRejectUpdate() ||
+          isTransactionCompletionUpdate() ||
+          isPendingReviewRemoval()
+        )
+      );
+      allow delete: if isAdmin();
+
+      match /messages/{messageId} {
+        allow read: if isAuthenticated() &&
+          (get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.buyerId == request.auth.uid ||
+           get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.sellerId == request.auth.uid);
+        allow create: if isAuthenticated() &&
+          request.resource.data.senderId == request.auth.uid &&
+          (get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.buyerId == request.auth.uid ||
+           get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.sellerId == request.auth.uid);
+        allow update, delete: if false;
+      }
+
+      match /handover_proposals/{proposalId} {
+        allow read: if isAuthenticated() &&
+          (
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.buyerId == request.auth.uid ||
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.sellerId == request.auth.uid ||
+            isAdmin()
+          );
+        allow create: if isAuthenticated() &&
+          request.resource.data.proposerId == request.auth.uid &&
+          (
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.buyerId == request.auth.uid ||
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.sellerId == request.auth.uid
+          ) &&
+          request.resource.data.status == 'pending' &&
+          request.resource.data.locationType in [
+            'public_place',
+            'station_area',
+            'cafe_or_shop_area',
+            'campus_area_rule_following',
+            'discuss_in_chat',
+          ];
+        allow update: if isAuthenticated() &&
+          (
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.buyerId == request.auth.uid ||
+            get(/databases/$(database)/documents/chat_rooms/$(chatId)).data.sellerId == request.auth.uid
+          ) &&
+          request.resource.data.status in [
+            'pending',
+            'accepted',
+            'rejected',
+            'cancelled',
+            'expired',
+          ];
+        allow delete: if isAdmin();
+      }
+    }
+
+    match /reports/{reportId} {
+      allow create: if isValidNewReport();
+      allow read: if isAdmin() ||
+        resource.data.reporterId == request.auth.uid ||
+        resource.data.reporterUserId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /announcements/{announcementId} {
+      allow read: if true;
+      allow write: if isAdmin();
+    }
+
+    match /reviews/{reviewId} {
+      allow read: if isVerifiedStudent() || isAdmin();
+      allow create: if isValidTransactionReview();
+      allow update, delete: if isAdmin();
+    }
+
+    match /class_reviews/{reviewId} {
+      allow read: if isVerifiedStudent() || isAdmin();
+      allow create: if isVerifiedStudent() &&
+        request.resource.data.userId == request.auth.uid;
+      allow update, delete: if isAdmin();
+    }
+
+    match /syllabus_master/{syllabusId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /shared_room_info/{classKey} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() &&
+        request.resource.data.class_key == classKey;
+      allow delete: if isAdmin();
+
+      match /suggestions/{userId} {
+        allow read: if isAuthenticated();
+        allow create, update: if isOwner(userId) &&
+          request.resource.data.created_by == request.auth.uid &&
+          request.resource.data.room_name is string &&
+          request.resource.data.room_name.size() > 0 &&
+          request.resource.data.room_name.size() <= 80;
+        allow delete: if isOwner(userId) || isAdmin();
+      }
+    }
+
+    match /otps/{otpId} {
+      allow read, write: if false;
+    }
+
+    match /mail/{mailId} {
+      allow read, write: if false;
+    }
+  }
+}

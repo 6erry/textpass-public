@@ -1,0 +1,50 @@
+rules_version = '2';
+service firebase.storage {
+  match /b/{bucket}/o {
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isImage() {
+      return request.resource != null &&
+        request.resource.contentType.matches('image/.*') &&
+        request.resource.size < 10 * 1024 * 1024;
+    }
+
+    function isOwnFile(fileName) {
+      return isAuthenticated() &&
+        fileName.matches(request.auth.uid + '_.*');
+    }
+
+    match /book_images/{fileName} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwnFile(fileName) && isImage();
+      allow delete: if isOwnFile(fileName);
+    }
+
+    match /events/{fileName} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwnFile(fileName) && isImage();
+      allow delete: if isOwnFile(fileName);
+    }
+
+    match /circle_icons/{fileName} {
+      allow read: if isAuthenticated();
+      allow create, update: if isOwnFile(fileName) && isImage();
+      allow delete: if isOwnFile(fileName);
+    }
+
+    match /profile_images/{fileName} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isImage() &&
+        fileName.matches(request.auth.uid + '_.*');
+      allow delete: if isAuthenticated() &&
+        fileName.matches(request.auth.uid + '_.*');
+    }
+
+    match /{allPaths=**} {
+      allow read: if false;
+      allow write: if false;
+    }
+  }
+}
